@@ -1,5 +1,6 @@
 # adhan-map
 Interactive world map visualizing active adhans from nealry 100k mosques with real-time prayer zone calculations.
+
 <img src="https://github.com/Maximkou1/adhan-map/raw/main/images/map.png" width="1000">
 
 # Methodology
