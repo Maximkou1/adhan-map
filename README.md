@@ -1,6 +1,6 @@
 # adhan-map
 Interactive world map visualizing active adhans from nealry 100k mosques with real-time prayer zone calculations.
-<img src="https://github.com/Maximkou1/adhan-map/raw/main/images/map.png" width="500">
+<img src="https://github.com/Maximkou1/adhan-map/raw/main/images/map.png" width="1000">
 
 # Methodology
 The calculation logic relies on the Muslim World League (MWL) convention to determine solar angles. It utilizes a fixed 5-minute interval for each adhan and does not account for the observer's altitude or extreme high-latitude cases, providing a generalized global approximation.
