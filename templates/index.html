@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Adhan Map - Live</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <style>
+        body { margin: 0; padding: 0; background-color: #0b0e14; overflow: hidden; font-family: 'Inter', -apple-system, sans-serif; color: white; }
+        #map { height: 100vh; width: 100%; background: #0b0e14; }
+
+        #top-bar {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            z-index: 1000; display: flex; gap: 20px; align-items: center;
+            background: rgba(10, 15, 25, 0.85); backdrop-filter: blur(10px);
+            padding: 12px 25px; border-radius: 50px; border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .prayer-legend { display: flex; gap: 15px; }
+        .prayer-item { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: default; }
+        .color-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        #controls {
+            position: absolute; bottom: 30px; left: 20px; z-index: 1000;
+            display: flex; flex-direction: column; gap: 10px;
+        }
+
+        .toggle-btn {
+            background: rgba(15, 20, 30, 0.9); border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white; padding: 10px 16px; border-radius: 12px; cursor: pointer;
+            font-size: 13px; transition: all 0.2s; display: flex; align-items: center; gap: 8px; min-width: 170px;
+        }
+        .toggle-btn:hover { background: rgba(30, 35, 45, 0.95); }
+        .toggle-btn.active { background: rgba(241, 196, 15, 0.2); border-color: #f1c40f; }
+
+        .mode-selector {
+            background: rgba(15, 20, 30, 0.9); border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px; padding: 5px; display: flex; gap: 5px;
+        }
+        .mode-btn {
+            background: transparent; border: none; color: rgba(255,255,255,0.5);
+            padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 11px; flex: 1;
+        }
+        .mode-btn.active { background: rgba(255,255,255,0.1); color: white; }
+
+        #loader {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #0b0e14; display: flex; justify-content: center; align-items: center;
+            z-index: 9999; flex-direction: column; gap: 15px;
+        }
+
+        .spinner {
+            width: 30px; height: 30px; border: 3px solid rgba(255,255,255,0.1);
+            border-top: 3px solid #ff8fa3; border-radius: 50%; animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* wave styles */
+        .soft-wave { fill-opacity: 0.35; stroke: none; pointer-events: all; cursor: pointer; }
+
+        /*  cluster styles */
+        .marker-cluster div { width: 30px; height: 30px; margin: 5px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 11px; background: rgba(40,40,40,0.8); border: 1px solid rgba(255,255,255,0.2); }
+        .cluster-fajr div { background: rgba(255, 143, 163, 0.8); }
+        .cluster-dhuhr div { background: rgba(247, 184, 1, 0.8); }
+        .cluster-asr div { background: rgba(241, 135, 1, 0.8); }
+        .cluster-maghrib div { background: rgba(243, 91, 4, 0.8); }
+        .cluster-isha div { background: rgba(61, 52, 139, 0.8); }
+
+        .leaflet-popup-content-wrapper {
+            background: rgba(10, 15, 25, 0.9) !important;
+            backdrop-filter: blur(8px);
+            color: #fff !important;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px !important;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+        }
+
+        .leaflet-popup-tip {
+            background: rgba(10, 15, 25, 0.9) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .leaflet-popup-close-button {
+            color: #888 !important;
+            padding: 8px 8px 0 0 !important;
+        }
+
+        .leaflet-popup-content {
+            margin: 12px 15px !important;
+            line-height: 1.4;
+            min-width: 100px;
+        }
+
+        #about-link { position: absolute; top: 20px; right: 20px; z-index: 1000; }
+        #about-link a { color: rgba(255,255,255,0.4); text-decoration: none; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+<div id="loader">
+    <div class="spinner"></div>
+    <p style="letter-spacing: 2px; color: #666; text-align: center;">Synchronizing...</p>
+</div>
+
+<div id="top-bar">
+    <div class="prayer-legend" id="legend">
+        </div>
+</div>
+
+<div id="controls">
+    <button id="toggle-waves" class="toggle-btn"><span>🌐</span> Zones Display</button>
+    <div class="mode-selector" id="mode-selector" style="display:none;">
+        <button class="mode-btn active" data-mode="simple">Simple</button>
+        <button class="mode-btn" data-mode="realistic">Realistic</button>
+    </div>
+    <button id="toggle-inactive" class="toggle-btn"><span>🔇</span> Show Inactive</button>
+</div>
+
+<div id="map"></div>
+
+<div id="about-link">
+    <a href="https://github.com/Maximkou1/adhan-map" target="_blank">GitHub ↗</a>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+<script>
+    const COLORS = {
+        "Fajr": "#ff8fa3", "Dhuhr": "#f7b801", "Asr": "#f18701",
+        "Maghrib": "#f35b04", "Isha": "#3d348b"
+    };
+
+    const PRAYER_ANGLES = {
+        "fajr": -18.0, "dhuhr": 0.0, "maghrib": -0.83, "isha": -17.0
+    };
+
+    const ADHAN_DURATION = 5;
+    let wavesEnabled = false;
+    let waveMode = 'simple';
+    let showInactive = false;
+    let globalPrayerStats = {}; // Важно: инициализация здесь
+    const allMosquesMap = new Map();
+
+    // map initialization
+    const map = L.map('map', {
+        center: [25, 15], zoom: 3, minZoom: 2, maxZoom: 18,
+        zoomControl: false, worldCopyJump: true
+    });
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+    map.createPane('wavePane').style.zIndex = 400;
+
+    const markerClusterGroup = L.markerClusterGroup({
+        maxClusterRadius: 40,
+        iconCreateFunction: (cluster) => {
+            const markers = cluster.getAllChildMarkers();
+            let counts = {};
+            markers.forEach(m => { if(m.options.prayer) counts[m.options.prayer] = (counts[m.options.prayer] || 0) + 1; });
+            let dominant = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b, 'none');
+            return L.divIcon({
+                html: `<div>${cluster.getChildCount()}</div>`,
+                className: `marker-cluster ${dominant !== 'none' ? 'cluster-' + dominant.toLowerCase() : ''}`,
+                iconSize: [40, 40]
+            });
+        }
+    }).addTo(map);
+
+    const waveLayer = L.geoJson(null, {
+        pane: 'wavePane',
+        style: (f) => ({
+            fillColor: f.properties.color,
+            weight: 0,
+            fillOpacity: 0.35,
+            className: 'soft-wave'
+        }),
+        onEachFeature: (f, l) => {
+            l.on('click', (e) => {
+                const pName = f.properties.prayer;
+                const count = globalPrayerStats[pName] || 0;
+
+                L.popup({
+                    maxWidth: 150,
+                    className: 'dark-popup'
+                })
+                .setLatLng(e.latlng)
+                .setContent(`
+                    <div style="text-align: center;">
+                        <div style="color: ${f.properties.color}; font-size: 14px; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px;">
+                            ${pName}
+                        </div>
+                        <div style="font-size: 20px; font-weight: 800; color: #ffffff; line-height: 1;">
+                            ${count.toLocaleString()}
+                        </div>
+                        <div style="color: #666; font-size: 14px; margin-top: 4px;">
+                            Active Mosques
+                        </div>
+                    </div>
+                `)
+                .openOn(map);
+            });
+        }
+    }).addTo(map);
+
+    // maths
+    function getSolarLon(lat, prayer, date) {
+        const p = prayer.toLowerCase();
+        const start = new Date(date.getFullYear(), 0, 0);
+        const dayOfYear = Math.floor((date - start) / 86400000);
+        const decl = 23.45 * Math.sin((2 * Math.PI / 365) * (dayOfYear - 81));
+        let target;
+        if (p === 'asr') {
+            const diffRad = Math.abs(lat - decl) * Math.PI / 180;
+            if (diffRad > 1.4) return null;
+            target = Math.atan(1 / (1 + Math.tan(diffRad))) * 180 / Math.PI;
+        } else { target = PRAYER_ANGLES[p]; }
+        try {
+            const latR = lat * Math.PI / 180, declR = decl * Math.PI / 180, altR = target * Math.PI / 180;
+            const cosH = (Math.sin(altR) - Math.sin(latR) * Math.sin(declR)) / (Math.cos(latR) * Math.cos(declR));
+            if (Math.abs(cosH) > 1) return null;
+            const h = Math.acos(cosH) * 180 / Math.PI;
+            const eot = 9.87 * Math.sin(2 * (2 * Math.PI / 365) * (dayOfYear - 81)) - 7.53 * Math.cos((2 * Math.PI / 365) * (dayOfYear - 81));
+            const timeOffset = (p === 'fajr') ? -h/15 : (p === 'dhuhr' ? 0 : h/15);
+            const utcDec = date.getUTCHours() + date.getUTCMinutes()/60 + date.getUTCSeconds()/3600;
+            let lon = (utcDec + eot/60 - 12 - timeOffset) * -15;
+            return ((lon + 180) % 360 + 360) % 360 - 180;
+        } catch(e) { return null; }
+    }
+
+    function generateWaves() {
+        const now = new Date(), ago = new Date(now.getTime() - ADHAN_DURATION * 60000);
+        const features = [];
+        for (const [p, col] of Object.entries(COLORS)) {
+            if (waveMode === 'realistic') {
+                let ptsS = [], ptsE = [], polys = [];
+                for (let lt = -70; lt <= 80; lt += 5) {
+                    const lnN = getSolarLon(lt, p, now), lnA = getSolarLon(lt, p, ago);
+                    if (lnN !== null && lnA !== null) {
+                        if (ptsS.length > 0 && Math.abs(lnN - ptsS[ptsS.length-1][0]) > 100) {
+                            polys.push([...ptsS, ...ptsE, ptsS[0]]);
+                            ptsS = []; ptsE = [];
+                        }
+                        ptsS.push([lnN, lt]); ptsE.unshift([lnA, lt]);
+                    } else if (ptsS.length > 2) {
+                        polys.push([...ptsS, ...ptsE, ptsS[0]]);
+                        ptsS = []; ptsE = [];
+                    }
+                }
+                if (ptsS.length > 2) polys.push([...ptsS, ...ptsE, ptsS[0]]);
+                if (polys.length > 0) features.push({ type: "Feature", properties: { prayer: p, color: col }, geometry: { type: "MultiPolygon", coordinates: polys.map(poly => [poly]) } });
+            } else {
+                const lnN = getSolarLon(30, p, now), lnA = getSolarLon(30, p, ago);
+                if (lnN === null || lnA === null) continue;
+                const lons = [lnN, lnA].sort((a,b) => a - b);
+                if (Math.abs(lons[0] - lons[1]) > 180) {
+                    features.push(createRect(lons[1], 180, p, col), createRect(-180, lons[0], p, col));
+                } else { features.push(createRect(lons[0], lons[1], p, col)); }
+            }
+        }
+        return { type: "FeatureCollection", features };
+    }
+
+    function createRect(w, e, prayer, col) {
+        return { type: "Feature", properties: { prayer: prayer, color: col }, geometry: { type: "Polygon", coordinates: [[[w, -85], [e, -85], [e, 85], [w, 85], [w, -85]]] } };
+    }
+
+    // synchronization
+    async function updateGlobalStats() {
+        try {
+            const res = await fetch('/api/stats');
+            const data = await res.json();
+            Object.keys(COLORS).forEach(p => {
+                if (data.prayers[p]) globalPrayerStats[p] = data.prayers[p].count;
+            });
+        } catch(e) { console.error("Stats error", e); }
+    }
+
+    async function refresh() {
+        const b = map.getBounds();
+        const bbox = `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`;
+        try {
+            const res = await fetch(`/api/get_adhans?bbox=${bbox}`);
+            const data = await res.json();
+            data.forEach(m => {
+                const id = `${m.lt.toFixed(5)}_${m.ln.toFixed(5)}`;
+                if (!allMosquesMap.has(id)) {
+                    const marker = L.circleMarker([m.lt, m.ln], {
+                        radius: m.a ? 7 : 3, fillColor: m.a ? COLORS[m.p] : '#555',
+                        color: 'transparent', fillOpacity: m.a ? 0.9 : 0.4, prayer: m.a ? m.p : null
+                    }).bindPopup(`<b>${m.n}</b><br>${m.a ? '🔊 ' + m.p : '🔇 Silent'}`);
+                    allMosquesMap.set(id, { data: m, marker });
+                } else {
+                    const entry = allMosquesMap.get(id);
+                    entry.data = m;
+                    entry.marker.setStyle({ radius: m.a ? 7 : 3, fillColor: m.a ? COLORS[m.p] : '#555' });
+                    entry.marker.options.prayer = m.a ? m.p : null;
+                }
+            });
+            renderMarkers();
+            document.getElementById('loader').style.display = 'none';
+        } catch(e) { console.error("Refresh error", e); }
+    }
+
+    function renderMarkers() {
+        markerClusterGroup.clearLayers();
+        const toAdd = [];
+        allMosquesMap.forEach(v => { if (showInactive || v.data.a) toAdd.push(v.marker); });
+        markerClusterGroup.addLayers(toAdd);
+    }
+
+    function updateWavesUI() {
+        if (!wavesEnabled) { waveLayer.clearLayers(); return; }
+        const data = generateWaves();
+        waveLayer.clearLayers().addData(data);
+    }
+
+    // buttons and start
+    document.getElementById('toggle-waves').onclick = function() {
+        wavesEnabled = !wavesEnabled;
+        this.classList.toggle('active');
+        document.getElementById('mode-selector').style.display = wavesEnabled ? 'flex' : 'none';
+        updateWavesUI();
+    };
+
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.onclick = function() {
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            waveMode = this.dataset.mode;
+            updateWavesUI();
+        };
+    });
+
+    document.getElementById('toggle-inactive').onclick = function() {
+        showInactive = !showInactive;
+        this.classList.toggle('active');
+        renderMarkers();
+    };
+
+    window.onload = () => {
+        const leg = document.getElementById('legend');
+        Object.entries(COLORS).forEach(([p, c]) => {
+            leg.innerHTML += `<div class="prayer-item"><div class="color-dot" style="background:${c}"></div>${p}</div>`;
+        });
+        updateGlobalStats();
+        refresh();
+        map.on('moveend', refresh);
+        setInterval(updateWavesUI, 10000);
+        setInterval(updateGlobalStats, 15000);
+        setInterval(refresh, 60000);
+    };
+</script>
+</body>
+</html>
